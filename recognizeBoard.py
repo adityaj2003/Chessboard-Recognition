@@ -62,36 +62,50 @@ def get_points(h, v):
     return np.array(points)
 
 
-def intersection_points(points, max_dist=50):
+def intersection_points(points, image, max_dist=50):
     Y = spatial.distance.pdist(points)
     Z = clstr.hierarchy.single(Y)
     T = clstr.hierarchy.fcluster(Z, max_dist, 'distance')
     clusters = defaultdict(list)
+    
     for i in range(len(T)):
         clusters[T[i]].append(points[i])
+    
     clustered_points = []
     for cluster in clusters.values():
         mean_point = np.mean(np.array(cluster), axis=0)
         clustered_points.append(mean_point)
-    return np.array(clustered_points)
-
+    
+    clustered_points = np.array(clustered_points)
+    
+    # Convert image to BGR format for OpenCV visualization
+    if len(image.shape) == 2:  # Grayscale to BGR
+        image = cv2.cvtColor((image * 255).astype('uint8'), cv2.COLOR_GRAY2BGR)
+    
+    # Draw original points in yellow
+    for point in points:
+        cv2.circle(image, (int(point[0]), int(point[1])), radius=5, color=(0, 255, 255), thickness=-1)
+    
+    # Draw clustered points in red
+    for point in clustered_points:
+        cv2.circle(image, (int(point[0]), int(point[1])), radius=7, color=(0, 0, 255), thickness=-1)
+    
+    # Display the image using OpenCV
+    cv2.imshow("Intersection Points", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
+    return clustered_points
 
 
 def process_image(filename):
     img = cv2.imread(filename)
-    cv2.imwrite('480_img1.jpg', img)
     
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    cv2.imshow('Grayscale Image', gray)
-    cv2.waitKey(0)
 
     # Apply Canny edge detection
     edges = canny_lines(gray)
-    cv2.imshow('Canny Edges', edges)
-    cv2.imwrite('480_img2.jpg', edges)
-
-    cv2.waitKey(0)
 
     # Detect lines using Hough Transform
     lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
@@ -111,12 +125,9 @@ def process_image(filename):
         x2 = int(x0 - 1000 * (-b))
         y2 = int(y0 - 1000 * (a))
         cv2.line(img_with_lines, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    cv2.imshow('Hough Lines', img_with_lines)
-    cv2.imwrite('480_img3.jpg', img_with_lines)
-    cv2.waitKey(0)
     h, v = get_lines(lines)
     points = get_points(h, v)
-    points = intersection_points(points)
+    points = intersection_points(points, img)
 
     cv2.destroyAllWindows()
     return points
@@ -297,7 +308,6 @@ ground_truth_fens = [
     "r1b1kbnr/1pp11ppp/p1p11111/11111111/111NP111/11111111/PPP11PPP/RNB1K11R"
 ]
 
-model_inception = load_model('chess_piece_classifier_model_inception.h5')
 model_resnet = load_model('chess_piece_classifier_resnet_model.h5')
 
 for filename, gt_fen in zip(image_filenames, ground_truth_fens):
@@ -307,35 +317,13 @@ for filename, gt_fen in zip(image_filenames, ground_truth_fens):
     rows = group_points_into_rows(points)
     subsquares = form_subsquares_from_rows(rows, img)
 
-    predicted_labels_inception = predict_pieces(subsquares, model_inception)
-    predicted_fen_inception = form_fen_string(predicted_labels_inception)
 
     predicted_labels_resnet = predict_pieces(subsquares, model_resnet)
     predicted_fen_resnet = form_fen_string(predicted_labels_resnet)
 
-    accuracy_inception = calculate_accuracy(predicted_fen_inception, gt_fen)
     accuracy_resnet = calculate_accuracy(predicted_fen_resnet, gt_fen)
 
     print(f"Image: {filename}")
     print(f"Ground Truth FEN: {gt_fen}")
-    print(f"Inception Model FEN: {predicted_fen_inception}, Accuracy: {accuracy_inception}%")
     print(f"ResNet Model FEN: {predicted_fen_resnet}, Accuracy: {accuracy_resnet}%")
     print("-" * 50)
-
-
-# Found 43839 images belonging to 13 classes.
-# Found 10955 images belonging to 13 classes.
-# Downloading data from https://storage.googleapis.com/tensorflow/keras-applications/inception_v3/inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5
-# 87910968/87910968 [==============================] - 3s 0us/step
-# Epoch 1/5
-# 1370/1370 [==============================] - 282s 177ms/step - loss: 0.5054 - accuracy: 0.8214 - val_loss: 0.4287 - val_accuracy: 0.8461
-# Epoch 2/5
-# 1370/1370 [==============================] - 238s 174ms/step - loss: 0.2104 - accuracy: 0.9225 - val_loss: 0.3853 - val_accuracy: 0.8841
-# Epoch 3/5
-# 1370/1370 [==============================] - 238s 173ms/step - loss: 0.1304 - accuracy: 0.9543 - val_loss: 0.2180 - val_accuracy: 0.9314
-# Epoch 4/5
-# 1370/1370 [==============================] - 237s 173ms/step - loss: 0.0905 - accuracy: 0.9691 - val_loss: 0.0967 - val_accuracy: 0.9699
-# Epoch 5/5
-# 1370/1370 [==============================] - 237s 173ms/step - loss: 0.0776 - accuracy: 0.9746 - val_loss: 0.0787 - val_accuracy: 0.9754
-# 1370/1370 [==============================] - 123s 90ms/step - loss: 0.0443 - accuracy: 0.9854
-# Train Set Accuracy: 98.54%
